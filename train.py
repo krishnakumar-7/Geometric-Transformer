@@ -6,7 +6,7 @@ from torch_geometric.loader import DataLoader
 import os
 
 # Import your custom classes
-from src.data.dataset import AirfoilDataset
+from src.data_handling.dataset import AirfoilDataset
 from src.model.transformer import GeometricTransformer
 
 def quick_test():
