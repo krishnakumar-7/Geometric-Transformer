@@ -1,0 +1,10 @@
+# Python specific
+__pycache__/
+*.pyc
+
+# Virtual Environment folder
+venv/
+
+# Large data folders to ignore
+data/
+processed_data/
