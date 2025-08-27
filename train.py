@@ -28,10 +28,11 @@ def train():
 
     # --- Training params ---
     LEARNING_RATE = 0.001
-    BATCH_SIZE = 2       # Reduced to 1 for extreme memory constraints
-    EPOCHS = 50
+    BATCH_SIZE = 1          # Reduced to 1 for extreme memory constraints
+    EPOCHS = 50             # Reduced from 100 - most models converge by 20-30 epochs
     VALIDATION_SPLIT = 0.1
     SUBSAMPLE_NODES = 4000  # Drastically reduced from 12000
+    EARLY_STOPPING_PATIENCE = 10  # Stop if no improvement for 10 epochs
     
     # --- Model params (much smaller) ---
     IN_FEATURES = 5
@@ -95,9 +96,10 @@ def train():
         return
 
     # ==========================================================================
-    # 4. The Training Loop
+    # 4. The Training Loop with Early Stopping
     # ==========================================================================
     best_val_loss = float('inf')
+    epochs_without_improvement = 0
 
     try:
         for epoch in range(EPOCHS):
@@ -122,7 +124,11 @@ def train():
                         continue
                     
                     # Enable mixed precision to save memory
-                    with torch.cuda.amp.autocast() if torch.cuda.is_available() else torch.no_grad():
+                    if torch.cuda.is_available():
+                        with torch.amp.autocast('cuda'):
+                            predictions = model(batch)
+                            loss = loss_fn(predictions.float(), batch.y.float())
+                    else:
                         predictions = model(batch)
                         loss = loss_fn(predictions.float(), batch.y.float())
                     
@@ -180,7 +186,11 @@ def train():
                         if not hasattr(batch, 'y') or batch.y is None:
                             continue
                             
-                        with torch.cuda.amp.autocast() if torch.cuda.is_available() else torch.no_grad():
+                        if torch.cuda.is_available():
+                            with torch.amp.autocast('cuda'):
+                                predictions = model(batch)
+                                loss = loss_fn(predictions.float(), batch.y.float())
+                        else:
                             predictions = model(batch)
                             loss = loss_fn(predictions.float(), batch.y.float())
                         
@@ -209,11 +219,15 @@ def train():
                 
             avg_val_loss = total_val_loss / val_batches
             
+            # Update learning rate scheduler
+            scheduler.step(avg_val_loss)
+            
             print(f"Epoch {epoch+1}/{EPOCHS} -> Train Loss: {avg_train_loss:.6f}, Val Loss: {avg_val_loss:.6f}")
             
-            # Save best model
+            # Early stopping logic
             if avg_val_loss < best_val_loss:
                 best_val_loss = avg_val_loss
+                epochs_without_improvement = 0
                 try:
                     # Create save directory
                     save_dir = '/content/drive/My Drive/colab_models'
@@ -228,6 +242,14 @@ def train():
                     
                 except Exception as e:
                     print(f"Error saving model: {e}")
+            else:
+                epochs_without_improvement += 1
+                print(f"No improvement for {epochs_without_improvement} epochs")
+                
+                if epochs_without_improvement >= EARLY_STOPPING_PATIENCE:
+                    print(f"Early stopping triggered! No improvement for {EARLY_STOPPING_PATIENCE} epochs.")
+                    print(f"Best validation loss: {best_val_loss:.6f}")
+                    break
                     
             # Clear GPU cache periodically
             if torch.cuda.is_available() and (epoch + 1) % 10 == 0:
