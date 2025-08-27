@@ -1,52 +1,53 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-from torch.utils.data import Subset
+from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
+from tqdm import tqdm
 import os
 
 # Import your custom classes
 from src.data_handling.dataset import AirfoilDataset
 from src.model.transformer import GeometricTransformer
 
-def quick_test():
-    """
-    A lightweight version of the training script that runs on a small
-    subset of data for a few batches to quickly test the pipeline.
-    """
-    print("--- 🚀 Running Quick Training Pipeline Test ---")
+def train():
+    """Main function to run the training and validation process."""
 
     # ==========================================================================
-    # 1. Lightweight Configuration
+    # 1. Configuration & Hyperparameters
     # ==========================================================================
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
-    # --- Test params ---
-    SUBSET_SIZE = 32         # Use only 32 samples from the dataset
+    # --- Training params ---
+    LEARNING_RATE = 0.001
     BATCH_SIZE = 8
-    MAX_BATCHES_TO_RUN = 4   # Stop after this many batches
-
-    # --- Lightweight Model params ---
-    IN_FEATURES = 5
+    EPOCHS = 100
+    VALIDATION_SPLIT = 0.1
+    
+    # --- Model params ---
+    IN_FEATURES = 5  # <-- THE FIX IS HERE
     OUT_FEATURES = 4
-    D_MODEL = 128            # Smaller model for faster forward/backward pass
-    NUM_LAYERS = 4
-    NUM_HEADS = 4
-    D_FF = 512
+    D_MODEL = 256
+    NUM_LAYERS = 6
+    NUM_HEADS = 8
+    D_FF = 1024
 
     # ==========================================================================
-    # 2. Data Loading (using a small subset)
+    # 2. Data Loading & Splitting
     # ==========================================================================
     full_dataset = AirfoilDataset(root='.')
     
-    # Create a small subset of the full dataset
-    subset_indices = range(SUBSET_SIZE)
-    test_subset = Subset(full_dataset, subset_indices)
+    num_samples = len(full_dataset)
+    num_val = int(VALIDATION_SPLIT * num_samples)
+    num_train = num_samples - num_val
+    train_dataset, val_dataset = random_split(full_dataset, [num_train, num_val])
     
-    print(f"Using a subset of {len(test_subset)} samples.")
+    print(f"Dataset size: {num_samples}")
+    print(f"Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}")
     
-    test_loader = DataLoader(test_subset, batch_size=BATCH_SIZE, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
     
     # ==========================================================================
     # 3. Model, Optimizer, and Loss Function
@@ -60,35 +61,59 @@ def quick_test():
         out_features=OUT_FEATURES
     ).to(device)
 
-    optimizer = Adam(model.parameters(), lr=0.001)
+    optimizer = Adam(model.parameters(), lr=LEARNING_RATE)
     loss_fn = nn.MSELoss()
     
     print(f"\nModel initialized with {sum(p.numel() for p in model.parameters())/1e6:.2f} M parameters.")
 
     # ==========================================================================
-    # 4. Simplified Training Loop
+    # 4. The Training Loop
     # ==========================================================================
-    model.train()
-    print("\nStarting training for a few batches...")
-    
-    for i, batch in enumerate(test_loader):
-        batch = batch.to(device)
-        optimizer.zero_grad()
+    best_val_loss = float('inf')
+
+    for epoch in range(EPOCHS):
+        # --- Training Phase ---
+        model.train()
+        total_train_loss = 0
+        train_pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} [Train]")
         
-        predictions = model(batch)
-        loss = loss_fn(predictions, batch.y)
-        
-        loss.backward()
-        optimizer.step()
-        
-        print(f"  Batch {i+1}/{MAX_BATCHES_TO_RUN} -> Loss: {loss.item():.6f}")
-        
-        # Stop after a few batches
-        if i >= MAX_BATCHES_TO_RUN - 1:
-            break
+        for batch in train_pbar:
+            batch = batch.to(device)
+            optimizer.zero_grad()
             
-    print("\n--- ✅ Quick training test completed successfully! ---")
+            predictions = model(batch)
+            loss = loss_fn(predictions, batch.y)
+            
+            loss.backward()
+            optimizer.step()
+            
+            total_train_loss += loss.item()
+            train_pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+        
+        avg_train_loss = total_train_loss / len(train_loader)
+
+        # --- Validation Phase ---
+        model.eval()
+        total_val_loss = 0
+        with torch.no_grad():
+            val_pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{EPOCHS} [Val]")
+            for batch in val_pbar:
+                batch = batch.to(device)
+                predictions = model(batch)
+                loss = loss_fn(predictions, batch.y)
+                total_val_loss += loss.item()
+                val_pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+
+        avg_val_loss = total_val_loss / len(val_loader)
+        
+        print(f"Epoch {epoch+1}/{EPOCHS} -> Train Loss: {avg_train_loss:.6f}, Val Loss: {avg_val_loss:.6f}")
+        
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            os.makedirs('models', exist_ok=True)
+            torch.save(model.state_dict(), 'models/best_model.pth')
+            print(f"✨ New best model saved with validation loss: {best_val_loss:.6f}")
 
 
 if __name__ == '__main__':
-    quick_test()
+    train()
