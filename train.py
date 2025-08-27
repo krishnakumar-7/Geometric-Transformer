@@ -1,4 +1,9 @@
+import sys
 import os
+
+# Add the project's root directory to the Python path
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, project_root)
 
 import torch
 import torch.nn as nn
@@ -9,8 +14,8 @@ from tqdm import tqdm
 
 # Import your custom classes
 from src.data_handling.dataset import AirfoilDataset
+from src.data_handling.transforms import SubsampleNodes
 from src.model.transformer import GeometricTransformer
-from src.data_handling.transforms import SubsampleNodes # <-- THE FIX IS HERE
 
 def train():
     """Main function to run the training and validation process."""
@@ -23,10 +28,10 @@ def train():
 
     # --- Training params ---
     LEARNING_RATE = 0.001
-    BATCH_SIZE = 8
+    BATCH_SIZE = 8          # If you still get OOM errors, reduce this to 4 or 2
     EPOCHS = 100
     VALIDATION_SPLIT = 0.1
-    SUBSAMPLE_NODES = 32000
+    SUBSAMPLE_NODES = 16000 # <-- THE FIX IS HERE. Reduced from 32000.
     
     # --- Model params ---
     IN_FEATURES = 5
