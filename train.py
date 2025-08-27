@@ -28,12 +28,13 @@ def train():
     print(f"Using device: {device}")
 
     # --- Training params ---
-    LEARNING_RATE = 0.001
-    BATCH_SIZE = 1          # Reduced to 1 for extreme memory constraints
-    EPOCHS = 50             # Reduced from 100 - most models converge by 20-30 epochs
+    LEARNING_RATE = 0.0001   # Much lower learning rate to prevent explosion
+    BATCH_SIZE = 1          
+    EPOCHS = 50             
     VALIDATION_SPLIT = 0.1
-    SUBSAMPLE_NODES = 4000  # Drastically reduced from 12000
-    EARLY_STOPPING_PATIENCE = 10  # Stop if no improvement for 10 epochs
+    SUBSAMPLE_NODES = 4000  
+    EARLY_STOPPING_PATIENCE = 10  
+    MAX_GRAD_NORM = 0.5     # Lower gradient clipping threshold
     
     # --- Model params (much smaller) ---
     IN_FEATURES = 5
@@ -133,15 +134,28 @@ def train():
                         predictions = model(batch)
                         loss = loss_fn(predictions.float(), batch.y.float())
                     
-                    # Check for NaN loss
-                    if torch.isnan(loss):
-                        print(f"Warning: NaN loss detected at epoch {epoch+1}, skipping batch")
+                    # Check for NaN loss or explosion
+                    if torch.isnan(loss) or loss.item() > 1e6:
+                        print(f"Warning: Unstable loss detected ({loss.item():.2e}), skipping batch")
                         continue
                     
                     loss.backward()
                     
-                    # Gradient clipping to prevent exploding gradients
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    # More aggressive gradient clipping
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=MAX_GRAD_NORM)
+                    
+                    # Check gradients for explosion
+                    total_norm = 0
+                    for p in model.parameters():
+                        if p.grad is not None:
+                            param_norm = p.grad.data.norm(2)
+                            total_norm += param_norm.item() ** 2
+                    total_norm = total_norm ** (1. / 2)
+                    
+                    if total_norm > 10.0:
+                        print(f"Warning: Large gradient norm ({total_norm:.2f}), skipping update")
+                        optimizer.zero_grad()
+                        continue
                     
                     optimizer.step()
                     
