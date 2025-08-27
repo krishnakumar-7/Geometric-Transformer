@@ -1,4 +1,3 @@
-import sys
 import os
 
 import torch
@@ -11,7 +10,7 @@ from tqdm import tqdm
 # Import your custom classes
 from src.data_handling.dataset import AirfoilDataset
 from src.model.transformer import GeometricTransformer
-from src.data_handling.dataset import SubsampleNodes 
+from src.data_handling.transforms import SubsampleNodes # <-- THE FIX IS HERE
 
 def train():
     """Main function to run the training and validation process."""
@@ -24,10 +23,10 @@ def train():
 
     # --- Training params ---
     LEARNING_RATE = 0.001
-    BATCH_SIZE = 8          # If you still get memory errors, try reducing this to 4 or 2
+    BATCH_SIZE = 8
     EPOCHS = 100
     VALIDATION_SPLIT = 0.1
-    SUBSAMPLE_NODES = 32000 # <-- DEFINE SUBSAMPLE SIZE (as per your project plan)
+    SUBSAMPLE_NODES = 32000
     
     # --- Model params ---
     IN_FEATURES = 5
@@ -40,10 +39,7 @@ def train():
     # ==========================================================================
     # 2. Data Loading & Splitting
     # ==========================================================================
-    # Create an instance of the transform
     node_transform = SubsampleNodes(num_nodes=SUBSAMPLE_NODES)
-
-    # Pass the transform to your dataset during initialization
     full_dataset = AirfoilDataset(root='.', transform=node_transform)
     
     num_samples = len(full_dataset)
@@ -55,7 +51,6 @@ def train():
     print(f"Subsampling each graph to {SUBSAMPLE_NODES} nodes.")
     print(f"Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}")
     
-    # Set num_workers=0 for Colab with Google Drive
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
     
@@ -120,7 +115,6 @@ def train():
         
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
-            # Save models to Google Drive to persist them
             save_dir = '/content/drive/My Drive/colab_models'
             os.makedirs(save_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(save_dir, 'best_model.pth'))
