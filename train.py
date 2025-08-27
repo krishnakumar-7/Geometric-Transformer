@@ -28,18 +28,18 @@ def train():
 
     # --- Training params ---
     LEARNING_RATE = 0.001
-    BATCH_SIZE = 4          # Further reduced for memory safety
+    BATCH_SIZE = 2       # Reduced to 1 for extreme memory constraints
     EPOCHS = 100
     VALIDATION_SPLIT = 0.1
-    SUBSAMPLE_NODES = 12000 # Further reduced from 16000 for memory safety
+    SUBSAMPLE_NODES = 4000  # Drastically reduced from 12000
     
-    # --- Model params ---
+    # --- Model params (much smaller) ---
     IN_FEATURES = 5
     OUT_FEATURES = 4
-    D_MODEL = 256
-    NUM_LAYERS = 6
-    NUM_HEADS = 8
-    D_FF = 1024
+    D_MODEL = 128           # Reduced from 256
+    NUM_LAYERS = 3          # Reduced from 6
+    NUM_HEADS = 4           # Reduced from 8
+    D_FF = 256              # Reduced from 1024
 
     # ==========================================================================
     # 2. Data Loading & Splitting
@@ -109,6 +109,10 @@ def train():
             
             for batch in train_pbar:
                 try:
+                    # Clear cache before each batch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    
                     batch = batch.to(device)
                     optimizer.zero_grad()
                     
@@ -117,8 +121,10 @@ def train():
                         print(f"Warning: Batch missing target values, skipping...")
                         continue
                     
-                    predictions = model(batch)
-                    loss = loss_fn(predictions, batch.y)
+                    # Enable mixed precision to save memory
+                    with torch.cuda.amp.autocast() if torch.cuda.is_available() else torch.no_grad():
+                        predictions = model(batch)
+                        loss = loss_fn(predictions.float(), batch.y.float())
                     
                     # Check for NaN loss
                     if torch.isnan(loss):
@@ -136,9 +142,13 @@ def train():
                     train_batches += 1
                     train_pbar.set_postfix({'loss': f'{loss.item():.4f}'})
                     
+                    # Clear cache after each batch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        
                 except RuntimeError as e:
                     if "out of memory" in str(e):
-                        print(f"GPU out of memory at epoch {epoch+1}. Try reducing batch size or model size.")
+                        print(f"GPU out of memory at epoch {epoch+1}. Clearing cache and skipping batch.")
                         if torch.cuda.is_available():
                             torch.cuda.empty_cache()
                         continue
@@ -161,18 +171,27 @@ def train():
                 val_pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{EPOCHS} [Val]")
                 for batch in val_pbar:
                     try:
+                        # Clear cache before each validation batch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                            
                         batch = batch.to(device)
                         
                         if not hasattr(batch, 'y') or batch.y is None:
                             continue
                             
-                        predictions = model(batch)
-                        loss = loss_fn(predictions, batch.y)
+                        with torch.cuda.amp.autocast() if torch.cuda.is_available() else torch.no_grad():
+                            predictions = model(batch)
+                            loss = loss_fn(predictions.float(), batch.y.float())
                         
                         if not torch.isnan(loss):
                             total_val_loss += loss.item()
                             val_batches += 1
                             val_pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+                        
+                        # Clear cache after each validation batch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                             
                     except RuntimeError as e:
                         if "out of memory" in str(e):
