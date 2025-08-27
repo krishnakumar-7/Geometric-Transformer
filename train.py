@@ -29,7 +29,7 @@ def train():
     # --- Training params ---
     LEARNING_RATE = 0.001
     BATCH_SIZE = 2       # Reduced to 1 for extreme memory constraints
-    EPOCHS = 100
+    EPOCHS = 50
     VALIDATION_SPLIT = 0.1
     SUBSAMPLE_NODES = 4000  # Drastically reduced from 12000
     
