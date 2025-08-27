@@ -1,14 +1,17 @@
+import sys
+import os
+
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
 from tqdm import tqdm
-import os
 
 # Import your custom classes
 from src.data_handling.dataset import AirfoilDataset
 from src.model.transformer import GeometricTransformer
+from src.data_handling.dataset import SubsampleNodes 
 
 def train():
     """Main function to run the training and validation process."""
@@ -21,12 +24,13 @@ def train():
 
     # --- Training params ---
     LEARNING_RATE = 0.001
-    BATCH_SIZE = 8
+    BATCH_SIZE = 8          # If you still get memory errors, try reducing this to 4 or 2
     EPOCHS = 100
     VALIDATION_SPLIT = 0.1
+    SUBSAMPLE_NODES = 32000 # <-- DEFINE SUBSAMPLE SIZE (as per your project plan)
     
     # --- Model params ---
-    IN_FEATURES = 5  # <-- THE FIX IS HERE
+    IN_FEATURES = 5
     OUT_FEATURES = 4
     D_MODEL = 256
     NUM_LAYERS = 6
@@ -36,7 +40,11 @@ def train():
     # ==========================================================================
     # 2. Data Loading & Splitting
     # ==========================================================================
-    full_dataset = AirfoilDataset(root='.')
+    # Create an instance of the transform
+    node_transform = SubsampleNodes(num_nodes=SUBSAMPLE_NODES)
+
+    # Pass the transform to your dataset during initialization
+    full_dataset = AirfoilDataset(root='.', transform=node_transform)
     
     num_samples = len(full_dataset)
     num_val = int(VALIDATION_SPLIT * num_samples)
@@ -44,8 +52,10 @@ def train():
     train_dataset, val_dataset = random_split(full_dataset, [num_train, num_val])
     
     print(f"Dataset size: {num_samples}")
+    print(f"Subsampling each graph to {SUBSAMPLE_NODES} nodes.")
     print(f"Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}")
     
+    # Set num_workers=0 for Colab with Google Drive
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
     
@@ -110,9 +120,11 @@ def train():
         
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
-            os.makedirs('models', exist_ok=True)
-            torch.save(model.state_dict(), 'models/best_model.pth')
-            print(f"✨ New best model saved with validation loss: {best_val_loss:.6f}")
+            # Save models to Google Drive to persist them
+            save_dir = '/content/drive/My Drive/colab_models'
+            os.makedirs(save_dir, exist_ok=True)
+            torch.save(model.state_dict(), os.path.join(save_dir, 'best_model.pth'))
+            print(f"✨ New best model saved to Google Drive with validation loss: {best_val_loss:.6f}")
 
 
 if __name__ == '__main__':
