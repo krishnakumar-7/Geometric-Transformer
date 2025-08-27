@@ -46,8 +46,8 @@ def train():
     print(f"Dataset size: {num_samples}")
     print(f"Training samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}")
     
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
     
     # ==========================================================================
     # 3. Model, Optimizer, and Loss Function
